@@ -2813,10 +2813,13 @@ def meta_index_Tensor(self, indices):
         len(indices) <= self.ndim,
         lambda: f"too many indices for tensor of dimension {self.ndim} (got {len(indices)})",
     )
-    # expand_outplace
+
     import torch._refs as refs  # avoid import cycle in mypy
 
-    indices = list(refs._maybe_broadcast(*indices))
+    common_shape = refs._broadcast_shapes(
+        *(t.shape if isinstance(t, TensorLike) else None for t in indices)
+    )
+
     # add missing null tensors
     while len(indices) < self.ndim:
         indices.append(None)
@@ -2874,7 +2877,7 @@ def meta_index_Tensor(self, indices):
             else:
                 before_shape.append(self.shape[dim])
         else:
-            replacement_shape = list(index.shape)
+            replacement_shape = common_shape
     return self.new_empty(before_shape + replacement_shape + after_shape)
 
 
@@ -3643,6 +3646,7 @@ def meta_relu_(self):
 
 def check_index_put_inputs(self, indices, values, accumulate=False):
     torch._check(bool(indices), lambda: "at least one index must be provided")
+
     # Most of the checks on the `indices` can be done by calling `meta_index_Tensor`.
     # The result of that gives the expected shape for `values` which can be used to
     # assert that `values` is of the correct shape. If the indices contain byte/bool
@@ -3652,7 +3656,7 @@ def check_index_put_inputs(self, indices, values, accumulate=False):
     # It is possible for index_put to contain scalars in the set of indices so these
     # are handled here since aten::index is the handler for advanced tensor indexing.
     # Basic indexing is handled elsewhere.
-    indices_without_scalars: List[Optional[Tensor]] = []
+    indices_without_scalars: List[Union[slice, Optional[Tensor]]] = []
     expected_values_shape = self
     for i, index in enumerate(indices):
         if index is not None:
@@ -3677,7 +3681,13 @@ def check_index_put_inputs(self, indices, values, accumulate=False):
     if len(indices_without_scalars) != 0:
         expected_values_shape = expected_values_shape[indices_without_scalars]
 
-    list(refs._maybe_broadcast(expected_values_shape, values))
+    # test if it is possible to obtain a common shape
+    refs._broadcast_shapes(
+        *(
+            t.shape if isinstance(t, TensorLike) else None
+            for t in [expected_values_shape, values]
+        )
+    )
 
 
 @register_meta([aten.index_put.default, aten._unsafe_index_put.default])
