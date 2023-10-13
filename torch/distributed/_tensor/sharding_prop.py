@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Callable, cast, Dict, Optional
+from typing import Callable, cast, Dict, Optional, List
 
 import torch
 from torch._ops import OpOverload
@@ -106,22 +106,26 @@ class ShardingPropagator:
             return None
 
     def _wrap_output_spec_tensor_meta(
-        self, output_spec: OutputSpecType, output_tensor_meta: object
+        self, op: OpOverload, output_spec: OutputSpecType, output_tensor_meta: object
     ) -> None:
         """
         Wrap the output_spec with the tensor metadata from the output.
         """
+
         if output_spec is not None:
-            if isinstance(output_spec, DTensorSpec):
-                assert isinstance(output_tensor_meta, TensorMeta)
-                output_spec.tensor_meta = output_tensor_meta
-            elif isinstance(output_spec, (tuple, list)):
-                for i, spec in enumerate(output_spec):
-                    if isinstance(spec, DTensorSpec):
-                        assert isinstance(output_tensor_meta, (tuple, list))
-                        output_tensor_meta_i = output_tensor_meta[i]
-                        assert isinstance(output_tensor_meta_i, TensorMeta)
-                        spec.tensor_meta = output_tensor_meta_i
+            # Normalise
+            output_spec: List[DTensorSpec] = [output_spec] if isinstance(output_spec, DTensorSpec) else list(output_spec)
+            output_tensor_meta: List[TensorMeta] = [output_tensor_meta] if isinstance(output_tensor_meta, TensorMeta) else list(output_tensor_meta) 
+            
+            # Validate lengths
+            if len(output_spec) != len(output_tensor_meta):
+                raise ValueError(f"For the op {op.name()}, `output_spec` has {len(output_spec)} outputs which does not equal the number of op outputs {len(output_tensor_meta)}.")
+            
+            # Validate elements and wrap
+            for i, (output_spec_i, output_tensor_meta_i) in enumerate(zip(output_spec, output_tensor_meta)):
+                if isinstance(output_spec_i, DTensorSpec):
+                    assert isinstance(output_tensor_meta_i, TensorMeta)
+                    output_spec_i.tensor_meta = output_tensor_meta_i
 
     def propagate(self, op_info: OpInfo) -> None:
         output_sharding = self.propagate_op_sharding(op_info.schema)
@@ -202,7 +206,7 @@ class ShardingPropagator:
             )
             # associate the output sharding with the output tensor metadata
             self._wrap_output_spec_tensor_meta(
-                output_sharding.output_spec, out_tensor_meta
+                op_schema.op, output_sharding.output_spec, out_tensor_meta
             )
             return output_sharding
 
@@ -249,7 +253,7 @@ class ShardingPropagator:
 
             # associate the output sharding with the output tensor metadata
             self._wrap_output_spec_tensor_meta(
-                output_sharding.output_spec, out_tensor_meta
+                op_schema.op, output_sharding.output_spec, out_tensor_meta
             )
 
             return output_sharding
