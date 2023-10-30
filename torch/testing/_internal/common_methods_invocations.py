@@ -3154,10 +3154,10 @@ def sample_inputs_index_put(op_info, device, dtype, requires_grad, **kwargs):
 
             # Test broadcasting values
             yield SampleInput(
-               make_arg(S, S),
-               (index_variable(2, S, device=device, allow_duplicates=accumulate),),
-               make_arg(1),
-               accumulate=accumulate)
+                make_arg(S, S),
+                (index_variable(2, S, device=device, allow_duplicates=accumulate),),
+                make_arg(1),
+                accumulate=accumulate)
         else:
             # Test with indices arg
             yield SampleInput(
