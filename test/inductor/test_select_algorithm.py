@@ -2,7 +2,8 @@
 import contextlib
 import functools
 import unittest.mock
-from typing import Any, Callable, Optional, Union
+from typing import Any, Optional, Union
+from collections.abc import Callable
 from unittest.mock import patch
 
 import torch
